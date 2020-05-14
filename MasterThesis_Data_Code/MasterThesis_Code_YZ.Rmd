@@ -1,0 +1,791 @@
+---
+title: "Thesis_Code_YZ"
+author: "YingtongZhou"
+date: "5/11/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Desktop/QMSS - CU/Spring 2020/GR5999_Thesis/GSSC2")
+```
+
+
+# Load GSS Data & Packages
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+library(haven)
+library(dplyr)
+library(ggplot2)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+library(MASS)
+library(psych)
+library(gtsummary)
+library(qwraps2)
+library(gt)
+library(tidyverse)
+library(glue)
+library(stargazer)
+
+GSSR2 <- read_sav("GSS7218_R2.sav")
+```
+
+
+# Subset Data
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+var1 <- c("YEAR", "ID", "RACE", "SEX", "AGE", "SIBS", "RES16", "FAMILY16",
+          "BORN", "PARBORN", "REALRINC", "INCOM16", "PAEDUC", "MAEDUC", 
+          "PAPRES105PLUS", "MAPRES105PLUS", "REALINC", "HOMPOP", "FINRELA", 
+          "PRESTG105PLUS", "EDUC", "RES161", "COMTYPE")
+gss <- GSSR2[, var1]
+```
+
+
+# Transform Variables
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+gss$PAPRES105PLUS[is.na(gss$PAPRES105PLUS)] <- -1
+gss$MAPRES105PLUS[is.na(gss$MAPRES105PLUS)] <- -1
+gss$HPARPRES <- ifelse(gss$PAPRES105PLUS >= gss$MAPRES105PLUS,
+                       gss$PAPRES105PLUS, 
+                       gss$MAPRES105PLUS)
+
+gss$PAEDUC[is.na(gss$PAEDUC)] <- -1
+gss$MAEDUC[is.na(gss$MAEDUC)] <- -1
+gss$HPAREDU <- ifelse(gss$PAEDUC >= gss$MAEDUC, 
+                      gss$PAEDUC, 
+                      gss$MAEDUC)
+gss$FEMALE <- gss$SEX == 2
+gss$BOTHPAR <- ifelse(gss$FAMILY16 == 1, 1, 0)
+gss$WHITE <- ifelse(gss$RACE == 1, 1, 0)
+gss$RES16MID <- ifelse(gss$RES16 > 3, 1, 0)
+
+gss$FIPP <- gss$REALINC / gss$HOMPOP # family income per household person
+gss$lnREALRINC <- log(gss$REALRINC)
+gss$lnFIPP <- log(gss$FIPP)
+gss$RESNOWBIG <- ifelse(gss$COMTYPE < 3, 1, 0)
+
+gss_sub <- gss %>% filter(HPAREDU >= 0 & HPARPRES > 0)
+# write.csv(gss_sub,'gss_sub.csv')
+```
+
+
+# Sample of Data Used
+```{r}
+gss_sample <- gss_sub[sample(1:nrow(gss_sub), 500, replace = FALSE), ]
+write.csv(gss_sample,'gss_sample.csv')
+```
+
+
+# Descriptive Table - Format Variables
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+var2 <- c("YEAR", "AGE", "REALRINC","FIPP","lnREALRINC","lnFIPP", 
+          "INCOM16", "WHITE", "FEMALE", "BOTHPAR", "RES16MID", "SIBS", 
+          "HPARPRES", "HPAREDU", "PRESTG105PLUS", "EDUC", "RESNOWBIG")
+gss_summary <- gss_sub[, var2]
+
+gss_summary$AGE <- as.numeric(gss_summary$AGE)
+gss_summary$REALRINC <- as.numeric(gss_summary$REALRINC)
+gss_summary$FIPP <- as.numeric(gss_summary$FIPP)
+gss_summary$lnREALRINC <- as.numeric(gss_summary$lnREALRINC)
+gss_summary$lnFIPP <- as.numeric(gss_summary$lnFIPP)
+gss_summary$INCOM16 <- as.numeric(gss_summary$INCOM16)
+gss_summary$SIBS <- as.numeric(gss_summary$SIBS)
+gss_summary$PRESTG105PLUS <- as.numeric(gss_summary$PRESTG105PLUS)
+gss_summary$EDUC <- as.numeric(gss_summary$EDUC)
+```
+
+ 
+# Summary Tables
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(as.data.frame(gss_summary), type = "html", 
+          title = "Descriptive Statistics", digits = 2, 
+          star.cutoffs = c(0.05, 0.01, 0.001),out="SumTb.htm")
+```
+
+
+# Log Transformation for More Normal Distribution
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+describe(gss_sub$REALRINC)
+describe(gss_sub$lnREALRINC)
+# lnREALRINC better
+
+describe(gss_sub$FIPP)
+describe(gss_sub$lnFIPP)
+# lnFIPP better
+```
+
+
+# Compare RES161 with RES161 & COMTYPE
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+lmlria2 <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+
+lmlfippa2 <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+
+# Control RESNOWBIG
+lmlria2n <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + RESNOWBIG + WHITE + BOTHPAR, data = gss_sub)
+
+lmlfippa2n <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + RESNOWBIG + WHITE + BOTHPAR, data = gss_sub)
+
+stargazer(lmlria2, lmlfippa2, lmlria2n, lmlfippa2n, 
+          type="html", df = FALSE,
+          star.cutoffs = c(0.05, 0.01, 0.001), out="models.htm")
+```
+
+
+# RESNOWBIG ~ RES16MID
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+BIG16 <- lm(RESNOWBIG ~ RES16MID, gss_sub)
+stargazer(BIG16, type = "html", df = FALSE, 
+          star.cutoffs = c(0.05, 0.01, 0.001), out = "modelbig.htm")
+```
+
+
+# Interaction 1: INCOM16:FEMALE
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IMint1ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + INCOM16:FEMALE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+
+IMint1fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + INCOM16:FEMALE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+```
+
+
+# Interaction 2: HPAREDU:FEMALE
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IMint2ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + INCOM16:FEMALE + HPAREDU:FEMALE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+
+IMint2fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + INCOM16:FEMALE + HPAREDU:FEMALE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+```
+
+
+# Interaction 3: BOTHPAR:FEMALE
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IMint3ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + INCOM16:FEMALE + HPAREDU:FEMALE + BOTHPAR:FEMALE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+
+IMint3fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + INCOM16:FEMALE + HPAREDU:FEMALE + BOTHPAR:FEMALE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+```
+
+
+# Interaction 4: RES16MID:WHITE
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IMint4ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + INCOM16:FEMALE + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+
+IMint4fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + INCOM16:FEMALE + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + INCOM16 + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = gss_sub)
+```
+
+
+# Interacction Result Table
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IMint1ri, IMint1fipp, IMint2ri, IMint2fipp, 
+          IMint3ri, IMint3fipp, IMint4ri, IMint4fipp,
+          star.cutoffs = c(0.05, 0.01, 0.001),
+          type ="html", df = FALSE, out ="interactions.htm")
+```
+
+
+# Seperate into 9 groups of 4 or 5 years intervals
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+g7275 <- gss_sub[gss_sub$YEAR %in% c(1972, 1973, 1974, 1975), ]
+g7680 <- gss_sub[gss_sub$YEAR %in% c(1976, 1977, 1978, 1980), ]
+g8285 <- gss_sub[gss_sub$YEAR %in% c(1982, 1983, 1984, 1985), ]
+g8689 <- gss_sub[gss_sub$YEAR %in% c(1986, 1987, 1988, 1989), ]
+g9094 <- gss_sub[gss_sub$YEAR %in% c(1990, 1991, 1993, 1994), ]
+g9600 <- gss_sub[gss_sub$YEAR %in% c(1996, 1998, 2000), ]
+g0206 <- gss_sub[gss_sub$YEAR %in% c(2002, 2004, 2006), ]
+g0812 <- gss_sub[gss_sub$YEAR %in% c(2008, 2010, 2012), ]
+g1418 <- gss_sub[gss_sub$YEAR %in% c(2014, 2016, 2018), ]
+```
+
+
+# Year Group Analysis with Family Background
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7275)
+IM7275fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7275)
+
+IM7680ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7680)
+IM7680fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7680)
+
+IM8285ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8285)
+IM8285fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8285)
+
+IM8689ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8689)
+IM8689fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8689)
+
+IM9094ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9094)
+IM9094fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9094)
+
+IM9600ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9600)
+IM9600fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9600)
+
+IM0206ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0206)
+IM0206fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0206)
+
+IM0812ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0812)
+IM0812fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0812)
+
+IM1418ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g1418)
+IM1418fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g1418)
+```
+
+
+# Year Group Analysis without Family Background
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7275)
+IM7275fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7275)
+
+IM7680rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7680)
+IM7680fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7680)
+
+IM8285rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8285)
+IM8285fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8285)
+
+IM8689rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8689)
+IM8689fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8689)
+
+IM9094rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9094)
+IM9094fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9094)
+
+IM9600rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9600)
+IM9600fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9600)
+
+IM0206rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0206)
+IM0206fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0206)
+
+IM0812rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0812)
+IM0812fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0812)
+
+IM1418rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g1418)
+IM1418fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g1418)
+```
+
+
+# 1. Family Background vs. lnREALRINC
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+# tab_model(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+#           IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+#           IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+#           auto.label = FALSE, show.ci = FALSE, p.style = "a", 
+#           dv.labels = c("72-75", ".", "76-80", ".", "82-85", ".", 
+#                         "86-89", ".", "90-94", ".", "96-00", ".", 
+#                         "02-06", ".", "08-12", ".", "14-18", "."))
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga1.htm")
+```
+
+
+# 2. Family Background vs. lnFIPP
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275fipp, IM7275fippn, IM7680fipp, IM7680fippn,
+          IM8285fipp, IM8285fippn, IM8689fipp, IM8689fippn,
+          IM9094fipp, IM9094fippn, IM9600fipp, IM9600fippn, 
+          IM0206fipp, IM0206fippn, IM0812fipp, IM0812fippn,
+          IM1418fipp, IM1418fippn,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga2.htm")
+```
+
+
+# 3. Family Background vs. Prestige
+# Year Group Analysis for PRESTG105PLUS with Family Background
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7275)
+
+IM7680ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7680)
+
+IM8285ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8285)
+
+IM8689ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8689)
+
+IM9094ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9094)
+
+IM9600ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9600)
+
+IM0206ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0206)
+
+IM0812ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0812)
+
+IM1418ri <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g1418)
+```
+
+
+# Year Group Analysis for PRESTG105PLUS without Family Background
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7275)
+
+IM7680rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7680)
+
+IM8285rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8285)
+
+IM8689rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8689)
+
+IM9094rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9094)
+
+IM9600rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9600)
+
+IM0206rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0206)
+
+IM0812rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0812)
+
+IM1418rin <- lm(PRESTG105PLUS ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g1418)
+```
+
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga3.htm")
+```
+
+
+# Year Group Analysis with Family Background Controlling PRESTG105PLUS
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g7275)
+IM7275fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g7275)
+
+IM7680ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g7680)
+IM7680fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g7680)
+
+IM8285ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g8285)
+IM8285fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g8285)
+
+IM8689ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g8689)
+IM8689fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g8689)
+
+IM9094ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g9094)
+IM9094fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g9094)
+
+IM9600ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g9600)
+IM9600fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g9600)
+
+IM0206ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g0206)
+IM0206fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g0206)
+
+IM0812ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g0812)
+IM0812fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g0812)
+
+IM1418ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g1418)
+IM1418fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + PRESTG105PLUS, data = g1418)
+```
+
+
+# Year Group Analysis without Family Background Controlling PRESTG105PLUS
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g7275)
+IM7275fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g7275)
+
+IM7680rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g7680)
+IM7680fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g7680)
+
+IM8285rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g8285)
+IM8285fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g8285)
+
+IM8689rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g8689)
+IM8689fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g8689)
+
+IM9094rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g9094)
+IM9094fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g9094)
+
+IM9600rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g9600)
+IM9600fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g9600)
+
+IM0206rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g0206)
+IM0206fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g0206)
+
+IM0812rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g0812)
+IM0812fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g0812)
+
+IM1418rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g1418)
+IM1418fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + PRESTG105PLUS, data = g1418)
+```
+
+
+# 4. Year Group Analysis of lnREALRINC with Family Background Controlling PRESTG105PLUS
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga4.htm")
+```
+
+
+# 5. Year Group Analysis of lnFIPP with Family Background Controlling PRESTG105PLUS
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275fipp, IM7275fippn, IM7680fipp, IM7680fippn,
+          IM8285fipp, IM8285fippn, IM8689fipp, IM8689fippn,
+          IM9094fipp, IM9094fippn, IM9600fipp, IM9600fippn, 
+          IM0206fipp, IM0206fippn, IM0812fipp, IM0812fippn,
+          IM1418fipp, IM1418fippn,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga5.htm")
+```
+
+
+# 6. Family Background vs. EDUC
+# Year Group Analysis for EDUC with Family Background
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7275)
+
+IM7680ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g7680)
+
+IM8285ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8285)
+
+IM8689ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g8689)
+
+IM9094ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9094)
+
+IM9600ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g9600)
+
+IM0206ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0206)
+
+IM0812ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g0812)
+
+IM1418ri <- lm(EDUC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, data = g1418)
+```
+
+
+# Year Group Analysis for EDUC without Family Background
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7275)
+
+IM7680rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g7680)
+
+IM8285rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8285)
+
+IM8689rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g8689)
+
+IM9094rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9094)
+
+IM9600rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g9600)
+
+IM0206rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0206)
+
+IM0812rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g0812)
+
+IM1418rin <- lm(EDUC ~ AGE + I(AGE^2) + FEMALE + WHITE, data = g1418)
+```
+
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga6.htm")
+```
+
+
+# Year Group Analysis with Family Background Controlling EDUC
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g7275)
+IM7275fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g7275)
+
+IM7680ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g7680)
+IM7680fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g7680)
+
+IM8285ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g8285)
+IM8285fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g8285)
+
+IM8689ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g8689)
+IM8689fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g8689)
+
+IM9094ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g9094)
+IM9094fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g9094)
+
+IM9600ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g9600)
+IM9600fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g9600)
+
+IM0206ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g0206)
+IM0206fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g0206)
+
+IM0812ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g0812)
+IM0812fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g0812)
+
+IM1418ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g1418)
+IM1418fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU:FEMALE + BOTHPAR:FEMALE + RES16MID:WHITE + FEMALE + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR + EDUC, data = g1418)
+```
+
+
+# Year Group Analysis without Family Background Controlling EDUC
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g7275)
+IM7275fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g7275)
+
+IM7680rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g7680)
+IM7680fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g7680)
+
+IM8285rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g8285)
+IM8285fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g8285)
+
+IM8689rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g8689)
+IM8689fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g8689)
+
+IM9094rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g9094)
+IM9094fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g9094)
+
+IM9600rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g9600)
+IM9600fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g9600)
+
+IM0206rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g0206)
+IM0206fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g0206)
+
+IM0812rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g0812)
+IM0812fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g0812)
+
+IM1418rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g1418)
+IM1418fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + FEMALE + WHITE + EDUC, data = g1418)
+```
+
+
+# 7. Year Group Analysis of lnREALRINC with Family Background Controlling EDUC
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga7.htm")
+```
+
+
+# 8. Year Group Analysis of lnFIPP with Family Background Controlling EDUC
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275fipp, IM7275fippn, IM7680fipp, IM7680fippn,
+          IM8285fipp, IM8285fippn, IM8689fipp, IM8689fippn,
+          IM9094fipp, IM9094fippn, IM9600fipp, IM9600fippn, 
+          IM0206fipp, IM0206fippn, IM0812fipp, IM0812fippn,
+          IM1418fipp, IM1418fippn,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga8.htm")
+```
+
+
+# Year Group Analysis with Family Background Female Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g7275)
+IM7275fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g7275)
+
+IM7680ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g7680)
+IM7680fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g7680)
+
+IM8285ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g8285)
+IM8285fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g8285)
+
+IM8689ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g8689)
+IM8689fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g8689)
+
+IM9094ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g9094)
+IM9094fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g9094)
+
+IM9600ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g9600)
+IM9600fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g9600)
+
+IM0206ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g0206)
+IM0206fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g0206)
+
+IM0812ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g0812)
+IM0812fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g0812)
+
+IM1418ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g1418)
+IM1418fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 1, data = g1418)
+```
+
+
+# Year Group Analysis without Family Background Female Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g7275)
+IM7275fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g7275)
+
+IM7680rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g7680)
+IM7680fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g7680)
+
+IM8285rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g8285)
+IM8285fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g8285)
+
+IM8689rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g8689)
+IM8689fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g8689)
+
+IM9094rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g9094)
+IM9094fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g9094)
+
+IM9600rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g9600)
+IM9600fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g9600)
+
+IM0206rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g0206)
+IM0206fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g0206)
+
+IM0812rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g0812)
+IM0812fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g0812)
+
+IM1418rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g1418)
+IM1418fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 1, data = g1418)
+```
+
+
+# 9. Year Group Analysis of lnREALRINC with Family Background Female Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga9.htm")
+```
+
+
+# 10. Year Group Analysis of lnFIPP with Family Background Female Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275fipp, IM7275fippn, IM7680fipp, IM7680fippn,
+          IM8285fipp, IM8285fippn, IM8689fipp, IM8689fippn,
+          IM9094fipp, IM9094fippn, IM9600fipp, IM9600fippn, 
+          IM0206fipp, IM0206fippn, IM0812fipp, IM0812fippn,
+          IM1418fipp, IM1418fippn,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga10.htm")
+```
+
+
+# Year Group Analysis with Family Background Male Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g7275)
+IM7275fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g7275)
+
+IM7680ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g7680)
+IM7680fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g7680)
+
+IM8285ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g8285)
+IM8285fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g8285)
+
+IM8689ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g8689)
+IM8689fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g8689)
+
+IM9094ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g9094)
+IM9094fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g9094)
+
+IM9600ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g9600)
+IM9600fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g9600)
+
+IM0206ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g0206)
+IM0206fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g0206)
+
+IM0812ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g0812)
+IM0812fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g0812)
+
+IM1418ri <- lm(lnREALRINC ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g1418)
+IM1418fipp <- lm(lnFIPP ~ AGE + I(AGE^2) + HPAREDU + HPARPRES + SIBS + RES16MID + WHITE + BOTHPAR, subset = FEMALE == 0, data = g1418)
+```
+
+
+# Year Group Analysis without Family Background Male Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+IM7275rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g7275)
+IM7275fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g7275)
+
+IM7680rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g7680)
+IM7680fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g7680)
+
+IM8285rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g8285)
+IM8285fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g8285)
+
+IM8689rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g8689)
+IM8689fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g8689)
+
+IM9094rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g9094)
+IM9094fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g9094)
+
+IM9600rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g9600)
+IM9600fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g9600)
+
+IM0206rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g0206)
+IM0206fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g0206)
+
+IM0812rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g0812)
+IM0812fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g0812)
+
+IM1418rin <- lm(lnREALRINC ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g1418)
+IM1418fippn <- lm(lnFIPP ~ AGE + I(AGE^2) + WHITE, subset = FEMALE == 0, data = g1418)
+```
+
+
+# 11. Year Group Analysis of lnREALRINC with Family Background Male Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275ri, IM7275rin, IM7680ri, IM7680rin, IM8285ri, IM8285rin, 
+          IM8689ri, IM8689rin, IM9094ri, IM9094rin, IM9600ri, IM9600rin, 
+          IM0206ri, IM0206rin, IM0812ri, IM0812rin, IM1418ri, IM1418rin,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga11.htm")
+```
+
+
+# 12. Year Group Analysis of lnFIPP with Family Background Male Subset
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+stargazer(IM7275fipp, IM7275fippn, IM7680fipp, IM7680fippn,
+          IM8285fipp, IM8285fippn, IM8689fipp, IM8689fippn,
+          IM9094fipp, IM9094fippn, IM9600fipp, IM9600fippn, 
+          IM0206fipp, IM0206fippn, IM0812fipp, IM0812fippn,
+          IM1418fipp, IM1418fippn,
+          star.cutoffs = c(0.05, 0.01, 0.001), se = NULL, report = "vc*",
+          column.labels = c("72-75", ".", "76-80", ".", "82-85", ".",
+                            "86-89", ".", "90-94", ".", "96-00", ".", 
+                            "02-06", ".", "08-12", ".", "14-18", "."),
+          model.numbers = FALSE, type ="html", df = FALSE, out ="yga12.htm")
+```
+
+
+# US Gini Index Plot Code
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+US_GI <- read.csv("~/Desktop/QMSS - CU/Spring 2020/GR5999_Thesis/GSSC2/US_GI.csv", 
+                  stringsAsFactors = FALSE)
+US_GI_t <- as.data.frame(t(US_GI))
+US_GI_t$Year <- rownames(US_GI_t)
+US_GI_t$Year <- substring(US_GI_t$Year, 2, 5)
+US_GI_t$Gini_Index <- US_GI_t$V1
+US_GI_t <- US_GI_t[3:62, ]
+
+US_GI_sub <- US_GI_t %>% 
+  filter(!is.na(Gini_Index))
+
+GI_Plot <- ggplot(US_GI_sub, aes(x = Year, y = Gini_Index)) +
+  geom_bar(stat = "identity") +
+  ggtitle("GINI Index (World Bank estimate) - United States (1974 - 2016)", 
+          subtitle = "Data Source: The World Bank\nURL: https://data.worldbank.org/indicator/SI.POV.GINI?end=2016&locations=US&start=1974&view=chart") +
+  xlab(NULL) +
+  ylab(NULL)
+
+GI_Plot
+```
