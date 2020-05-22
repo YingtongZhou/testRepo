@@ -1,0 +1,534 @@
+---
+title: "5052_Presentation_CPXYY"
+author: "Yingtong Zhou"
+date: "4/30/2020"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+setwd("~/Desktop/QMSS - CU/Spring 2020/GR5052_Practicum")
+library(ggplot2)
+library(dplyr)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(tidytext)
+library(tidyverse)
+library(plotrix)
+library(quanteda)
+
+loan <- read.csv("~/Desktop/QMSS - CU/Spring 2020/GR5052_Practicum/df_loan_sample.csv", 
+                       comment.char="#", stringsAsFactors = FALSE)
+```
+
+
+# Bar Charts - Sub Issue vs. # of Complaints
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+unique(loan$Sub_issue)
+
+si_bar <- loan %>% 
+  group_by(Sub_issue) %>% 
+  summarize(cnt = n()) %>% 
+  arrange(desc(cnt))
+
+gg_si <- ggplot(si_bar, aes(x = reorder(Sub_issue, -cnt), y = cnt)) +
+  geom_bar(stat = "identity", fill = "lightskyblue1") +
+  theme(axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10, angle = 70)) +
+  geom_text(aes(label = cnt), 
+            hjust = 0.75, 
+            vjust = 0.5) +
+  coord_flip() +
+  ylim(0, 10000) + 
+  xlab(NULL)
+  
+
+gg_si
+```
+
+
+# Table - Company_public_response vs. # of Complaints
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+cpr_bar <- loan %>% 
+  group_by(Company_public_response) %>% 
+  summarize(cnt = n()) %>% 
+  arrange(desc(cnt))
+
+cpr_bar$Company_public_response[cpr_bar$Company_public_response == ""] <- "NA"
+
+cpr_bar
+```
+
+
+# Bar Charts - Company_public_response vs. # of Complaints
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+si_cpr_bar <- loan %>% 
+  mutate(npr = ifelse(grepl("CFPB", Company_public_response),
+                      "Yes",
+                      "No")) %>%
+  group_by(Sub_issue, npr) %>%
+  summarize(cnt = n()) %>% 
+  arrange(desc(cnt))
+
+gg_si_cpr <- ggplot(si_cpr_bar, aes(x = reorder(Sub_issue, -cnt), y = cnt, fill = npr)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  ylim(0, 10000) + 
+  xlab(NULL) +
+  ylab(NULL) +
+  ggtitle("Company has responded to the consumer\nand the CFPBand chooses not to\nprovide a public response")
+
+gg_si_cpr
+```
+
+
+# Bar Charts - Company_response_to_consumer & Sub_issue vs. # of Complaints
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+si_crc_bar <- loan %>% 
+  group_by(Sub_issue, Company_response_to_consumer) %>% 
+  summarize(cnt = n()) %>% 
+  arrange(desc(cnt))
+
+si_crc_bar$Company_response_to_consumer[si_crc_bar$Company_response_to_consumer == ""] <- "NA"
+
+gg_si_crc <- ggplot(si_crc_bar, aes(x = reorder(Sub_issue, -cnt), y = cnt, fill = Company_response_to_consumer)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  ylim(0, 10000) + 
+  xlab(NULL) +
+  ylab(NULL)
+  
+
+gg_si_crc
+```
+
+
+# Bar Charts - Tags & Sub_issue vs. # of Complaints
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+si_t_bar <- loan %>% 
+  group_by(Sub_issue, Tags) %>% 
+  summarize(cnt = n()) %>% 
+  arrange(desc(cnt))
+
+si_t_bar$Tags[si_t_bar$Tags == ""] <- "None"
+
+gg_si_t <- ggplot(si_t_bar, aes(x = reorder(Sub_issue, -cnt), y = cnt, fill = Tags)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  xlab(NULL) +
+  ylab(NULL)
+  
+
+gg_si_t
+```
+
+
+# Sub Issue vs. Timely Response
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+com_tut <- loan %>% 
+  filter(!Timely_response_ == "") %>% 
+  group_by(Sub_issue, Timely_response_) %>% 
+  summarize(cnt1 = n())
+
+gg_tut <- ggplot(com_tut, aes(x = reorder(Sub_issue, -cnt1), y = cnt1, fill = Timely_response_)) +
+  geom_bar(stat = "identity",position = "dodge") +
+  geom_text(aes(label = cnt1), 
+            hjust = 0.05, 
+            vjust = 0.5,
+            position = position_dodge(width = 1),
+            size = 3) +
+  coord_flip() +
+  ylim(0, 10000) +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 9)) +
+  xlab(NULL)
+
+gg_tut
+```
+
+
+# Untimely%
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+com_ut <- left_join(com_tut, si_bar, by = "Sub_issue") %>% 
+  mutate(ptn = round(cnt1 / cnt, 3))
+
+gg_prop <- ggplot(com_ut, aes(x = reorder(Sub_issue, -cnt),
+                              y = ptn, fill = Timely_response_)) +
+  geom_bar(stat = "identity",position = "dodge") +
+  geom_text(aes(label = ptn), 
+            hjust = 0.25, 
+            vjust = 0.5,
+            position = position_dodge(width = 1),
+            size = 3) +
+  coord_flip() +
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 9)) +
+  xlab(NULL) +
+  ylab("Proportion")
+
+gg_prop
+```
+
+
+# Bar Charts -  Company_response_to_consumer vs. # of Complaints
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+crc_bar <- loan %>% 
+  group_by(Company_response_to_consumer) %>% 
+  summarize(cnt = n()) %>% 
+  arrange(desc(cnt))
+
+gg_crc <- ggplot(crc_bar, aes(x = reorder(Company_response_to_consumer, -cnt), y = cnt)) +
+  geom_bar(stat = "identity", fill = "lightskyblue1") +
+  theme(axis.text.y = element_text(size = 10),
+         axis.text.x = element_text(size = 10)) +
+  geom_text(aes(label = cnt), 
+            hjust = 0.75, 
+            vjust = 0.5) +
+  coord_flip() +
+  ylim(0, 20000) + 
+  xlab(NULL)
+  
+
+gg_crc
+```
+
+
+# Text Analysis
+# Narratives Comparison of Timely & Untimely
+## Generate Corpus
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+timely_df <- loan %>% 
+  filter(Timely_response_ == "Yes") %>% 
+  select(Consumer_complaint_narrative) %>% 
+  slice(1:500)
+
+timely_corpus <- Corpus(VectorSource(timely_df))
+
+untimely_df <- loan %>% 
+  filter(Timely_response_ == "No") %>% 
+  select(Consumer_complaint_narrative)
+
+untimely_corpus <- Corpus(VectorSource(untimely_df))
+```
+
+
+# Clean Narratives
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+removeNumPunct <- function(x){gsub("[^[:alpha:][:space:]]*", "", x)}
+
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, removeWords, c("XXXX", "XX"))
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removeWords, c(stopwords("en"), "xxxx"))
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, content_transformer(removeNumPunct))
+  corpus <- tm_map(corpus, stripWhitespace)
+  return(corpus)
+}
+
+timely_clean <- clean_corpus(timely_corpus)
+untimely_clean <- clean_corpus(untimely_corpus)
+
+timely_stem <- tm_map(timely_clean, stemDocument)
+untimely_stem <- tm_map(untimely_clean, stemDocument)
+
+stemCompletion2 <- function(x, dictionary) {
+   x <- unlist(strsplit(as.character(x), " "))
+   x <- x[x != ""]
+   x <- stemCompletion(x, dictionary=dictionary)
+   x <- paste(x, sep="", collapse=" ")
+   PlainTextDocument(stripWhitespace(x))
+}
+
+timely_comp <- lapply(timely_stem, stemCompletion2, dictionary = timely_clean)
+untimely_comp <- lapply(untimely_stem, stemCompletion2, dictionary = untimely_clean)
+
+timely_comp <- as.VCorpus(timely_comp)
+untimely_comp <- as.VCorpus(untimely_comp)
+
+# Create DTM
+timely_dtm <- DocumentTermMatrix(timely_comp)
+untimely_dtm <- DocumentTermMatrix(untimely_comp)
+```
+
+
+## Timely Word Cloud
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+m <- as.matrix(timely_dtm)
+v <- sort(colSums(m),decreasing = TRUE)
+d <- data.frame(word = names(v),freq = v)
+
+set.seed(1234)
+wordcloud(words = d$word, freq = d$freq, min.freq = 25,
+          max.words = 200, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+
+## Untimely Word Cloud
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+m2 <- as.matrix(untimely_dtm)
+v2 <- sort(colSums(m2),decreasing = TRUE)
+d2 <- data.frame(word = names(v2),freq = v2)
+
+set.seed(1234)
+wordcloud(words = d2$word, freq = d2$freq, min.freq = 25,
+          max.words = 200, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+
+## Common Words
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+timely_word <- d[10:40, ]
+untimely_word <- d2 %>% 
+  filter(word %in% timely_word$word) %>% 
+  rename(untimely_cnt = freq)
+
+common_word <- left_join(untimely_word, timely_word)
+(common_word <- common_word[1:20, ])
+
+plot_cw <- pyramid.plot(common_word$freq, common_word$untimely_cnt,
+                       labels = common_word$word, gap = 10, 
+                       top.labels = c("Timely", " ", "Untimely"),
+                       main = "Words in Common", laxlab = NULL, 
+                       raxlab = NULL, unit = NULL, labelcex = 0.5)
+```
+
+
+## Common Words - from each group
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+timely_word <- d[10:25, ]
+untimely_word <- d2[10:25, ]
+
+timely_word_new <- distinct(rbind(timely_word, d %>% filter(word %in% untimely_word$word)))
+untimely_word_new <- distinct(rbind(untimely_word, d2 %>% filter(word %in% timely_word$word))) %>% 
+  rename(ut_freq = freq)
+
+common_word_new <- full_join(timely_word_new, untimely_word_new, by = "word") %>% 
+  na.omit()
+
+common_word_new
+
+plot_cw2 <- pyramid.plot(common_word_new$freq, common_word_new$ut_freq,
+                       labels = common_word_new$word, gap = 10, 
+                       top.labels = c("Timely", " ", "Untimely"),
+                       main = "Words in Common", laxlab = NULL, 
+                       raxlab = NULL, unit = NULL, labelcex = 0.5)
+```
+
+
+# Simplicity - little difference
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+timely_rbt <- textstat_readability(as.character(timely_df),
+                     measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables'))
+
+untimely_rbt <- textstat_readability(as.character(untimely_df),
+                     measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables'))
+rbt <- rbind(timely_rbt, untimely_rbt)
+rbt[1, 1] <- "Timely"
+rbt[2, 1] <- "Untimely"
+
+rbt
+```
+
+
+
+
+# Narratives Comparison of Company_response_to_consumer
+## Generate Corpus
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+cnmr_df <- loan %>% 
+  filter(Company_response_to_consumer == "Closed with non-monetary relief") %>% 
+  select(Consumer_complaint_narrative) %>% 
+  slice(1:500)
+
+cnmr_corpus <- Corpus(VectorSource(cnmr_df))
+
+ce_df <- loan %>% 
+  filter(Company_response_to_consumer == "Closed with explanation") %>% 
+  select(Consumer_complaint_narrative) %>% 
+  slice(1:500)
+
+ce_corpus <- Corpus(VectorSource(ce_df))
+
+cmr_df <- loan %>% 
+  filter(Company_response_to_consumer == "Closed with monetary relief") %>% 
+  select(Consumer_complaint_narrative)
+
+cmr_corpus <- Corpus(VectorSource(cmr_df))
+
+ur_df <- loan %>% 
+  filter(Company_response_to_consumer == "Untimely response") %>% 
+  select(Consumer_complaint_narrative)
+
+ur_corpus <- Corpus(VectorSource(ur_df))
+```
+
+
+# Clean Narratives
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+cnmr_clean <- clean_corpus(cnmr_corpus)
+ce_clean <- clean_corpus(ce_corpus)
+cmr_clean <- clean_corpus(cmr_corpus)
+ur_clean <- clean_corpus(ur_corpus)
+
+cnmr_stem <- tm_map(cnmr_clean, stemDocument)
+ce_stem <- tm_map(ce_clean, stemDocument)
+cmr_stem <- tm_map(cmr_clean, stemDocument)
+ur_stem <- tm_map(ur_clean, stemDocument)
+
+cnmr_comp <- lapply(cnmr_stem, stemCompletion2, dictionary = cnmr_clean)
+ce_comp <- lapply(ce_stem, stemCompletion2, dictionary = ce_clean)
+cmr_comp <- lapply(cmr_stem, stemCompletion2, dictionary = cmr_clean)
+ur_comp <- lapply(ur_stem, stemCompletion2, dictionary = ur_clean)
+
+cnmr_comp <- as.VCorpus(cnmr_comp)
+ce_comp <- as.VCorpus(ce_comp)
+cmr_comp <- as.VCorpus(cmr_comp)
+ur_comp <- as.VCorpus(ur_comp)
+
+# Create DTM
+cnmr_dtm <- DocumentTermMatrix(cnmr_comp)
+ce_dtm <- DocumentTermMatrix(ce_comp)
+cmr_dtm <- DocumentTermMatrix(cmr_comp)
+ur_dtm <- DocumentTermMatrix(ur_comp)
+```
+
+
+## Closed with non-monetary relief Word Cloud
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+ma <- as.matrix(cnmr_dtm)
+va <- sort(colSums(ma),decreasing = TRUE)
+da <- data.frame(word = names(va),freq = va)
+
+set.seed(1234)
+wordcloud(words = da$word, freq = da$freq, min.freq = 25,
+          max.words = 200, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+
+## Closed with explanation Word Cloud
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+mb <- as.matrix(ce_dtm)
+vb <- sort(colSums(mb),decreasing = TRUE)
+db <- data.frame(word = names(vb),freq = vb)
+
+set.seed(1234)
+wordcloud(words = db$word, freq = db$freq, min.freq = 25,
+          max.words = 200, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+
+## Closed with monetary relief Word Cloud
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+mc <- as.matrix(cmr_dtm)
+vc <- sort(colSums(mc),decreasing = TRUE)
+dc <- data.frame(word = names(vc),freq = vc)
+
+set.seed(1234)
+wordcloud(words = dc$word, freq = dc$freq, min.freq = 25,
+          max.words = 200, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+
+## Untimely response Word Cloud
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+md <- as.matrix(ur_dtm)
+vd <- sort(colSums(md),decreasing = TRUE)
+dd <- data.frame(word = names(vd),freq = vd)
+
+set.seed(1234)
+wordcloud(words = dd$word, freq = dd$freq, min.freq = 25,
+          max.words = 200, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+
+# Simplicity - Closed with monetary relief - Highest Flesch - Easiest to Read
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+cnmr_rbt <- textstat_readability(as.character(cnmr_df),
+                     measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables'))
+
+ce_rbt <- textstat_readability(as.character(ce_df),
+                     measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables'))
+
+cmr_rbt <- textstat_readability(as.character(cmr_df),
+                     measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables'))
+
+ur_rbt <- textstat_readability(as.character(ur_df),
+                     measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables'))
+
+rbt <- rbind(cnmr_rbt, ce_rbt, cmr_rbt, ur_rbt)
+
+rbt[1, 1] <- "Closed with non-monetary relief"
+rbt[2, 1] <- "Closed with explanation"
+rbt[3, 1] <- "Closed with monetary relief"
+rbt[4, 1] <- "Untimely response"
+
+rbt
+```
+
+
+# Sentiment Analysis
+# Negative Scores of Narratives & Company_response_to_consumer
+## Highest Negative Average Score: Closed with monetary relief
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+Neg_Sc <- function(ctgy) {
+  loan %>% 
+  filter(Company_response_to_consumer == ctgy) %>% 
+  mutate(RowNum = row_number()) %>% 
+  unnest_tokens(word, Consumer_complaint_narrative) %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  select(RowNum, value) %>% 
+  filter(value < 0) %>% 
+  group_by(RowNum) %>% 
+  mutate(Score = sum(value)) %>% 
+  select(RowNum, Score) %>% 
+  distinct() %>% 
+  plyr::summarise(mean(Score))
+}
+
+crc_cat <- c("Closed with non-monetary relief", "Closed with explanation", "Closed with monetary relief", "Untimely response")
+
+NS <- unlist(lapply(crc_cat, Neg_Sc))
+(ns_cat <- cbind(crc_cat, NS))
+```
+
+
+# Positive Scores of Narratives & Company_response_to_consumer
+## Highest Positive Average Score: Closed with monetary relief 
+## (as well - this is a very emotional category)
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+Pos_Sc <- function(ctgy) {
+  loan %>% 
+  filter(Company_response_to_consumer == ctgy) %>% 
+  mutate(RowNum = row_number()) %>% 
+  unnest_tokens(word, Consumer_complaint_narrative) %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  select(RowNum, value) %>% 
+  filter(value > 0) %>% 
+  group_by(RowNum) %>% 
+  mutate(Score = sum(value)) %>% 
+  select(RowNum, Score) %>% 
+  distinct() %>% 
+  plyr::summarise(mean(Score))
+}
+
+PS <- unlist(lapply(crc_cat, Pos_Sc))
+(ps_cat <- cbind(crc_cat, PS))
+```
