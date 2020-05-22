@@ -1,0 +1,723 @@
+---
+title: "Homework 2 - Mapping Fire Incidents and FDNY Response Times"
+author: "Yingtong Zhou"
+date: '2020-03-19'
+---
+
+```{r, include=FALSE}
+setwd("~/Desktop/QMSS - CU/Spring 2020/GR5063_DataViz/course_materials/exercises/07_fire")
+BuiFire <- read.csv("~/Desktop/QMSS - CU/Spring 2020/GR5063_DataViz/course_materials/exercises/07_fire/building_fires.csv")
+FDNY <- read.csv("~/Desktop/QMSS - CU/Spring 2020/GR5063_DataViz/course_materials/exercises/07_fire/FDNY_Firehouse_Listing.csv")
+```
+
+
+# 1. Location of Severe Fires
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+library(leaflet)
+library(tidyverse)
+
+BuiFireH <- BuiFire %>% 
+  filter(HIGHEST_LEVEL_DESC %in% c("75 - All Hands Working", "7 - Signal 7-5")) %>% 
+  filter(!IM_INCIDENT_KEY == 59533504) # remove an incident outside NYC
+
+map1 <- leaflet(BuiFireH) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>%
+  addTiles() %>% 
+  addCircles(lng = ~lon, lat = ~lat)
+```
+
+
+## Popup
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+library(RColorBrewer)
+pal = colorFactor("Set1", domain = BuiFireH$DETECTOR_PRESENCE_DESC)
+color_DETECTOR_PRESENCE_DESC = pal(BuiFireH$DETECTOR_PRESENCE_DESC)
+
+content <- paste("Start:", BuiFireH$INCIDENT_DATE_TIME, "<br/>",
+                 "End:", BuiFireH$LAST_UNIT_CLEARED_DATE_TIME, "<br/>",
+                 "Duration in Seconds:", BuiFireH$TOTAL_INCIDENT_DURATION, "<br/>",
+                 "Detector Presence:", BuiFireH$DETECTOR_PRESENCE_DESC, "<br/>")
+mpop <- map1 %>% 
+  addCircles(color = color_DETECTOR_PRESENCE_DESC, 
+             popup = content) %>% 
+  addLegend(pal = pal,
+            values = ~BuiFireH$DETECTOR_PRESENCE_DESC,
+            title = "Detector Presence",
+            "topleft")
+
+mpop
+```
+
+
+# 2. Layers and Clusters
+
+## a. Color by Type of Property
+
+### Creating 5 Categories
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+commercial <- c("579 - Motor vehicle or boat sales, services, repair", 
+                "700 - Manufacturing, processing",
+                "161 - Restaurant or cafeteria",
+                "881 - Parking garage, (detached residential garage)",
+                "564 - Laundry, dry cleaning",
+                "559 - Recreational, hobby, home repair sales, pet store",
+                "500 - Mercantile, business, other",
+                "549 - Specialty shop",
+                "519 - Food and beverage sales, grocery store",
+                "449 - Hotel/motel, commercial",
+                "891 - Warehouse",
+                "599 - Business office",
+                "580 - General retail, other",
+                "965 - Vehicle parking area",
+                "100 - Assembly, other",
+                "557 - Personal service, including barber & beauty shops",
+                "000 - Property Use, other",
+                "511 - Convenience store",
+                "162 - Bar or nightclub",
+                "539 - Household goods, sales, repairs",
+                "180 - Studio/theater, other",
+                "183 - Movie theater",
+                "160 - Eating, drinking places, other",
+                "963 - Street or road in commercial area",
+                "529 - Textile, wearing apparel sales",
+                "882 - Parking garage, general vehicle",
+                "648 - Sanitation utility",
+                "110 - Fixed-use recreation places, other",
+                "592 - Bank",
+                "571 - Service station, gas station",
+                "182 - Auditorium, concert hall",
+                "581 - Department or discount store",
+                "121 - Ballroom, gymnasium",
+                "112 - Billiard center, pool hall ",
+                "142 - Clubhouse",
+                "140 - Clubs, other",
+                "569 - Professional supplies, services",
+                "974 - Aircraft loading area",
+                "635 - Computer center",
+                "186 - Film/movie production studio",
+                "181 - Live performance theater",
+                "134 - Funeral parlor",
+                "144 - Casino, gambling clubs",
+                "143 - Yacht Club",
+                "639 - Communications center")
+
+residential <- c("429 - Multifamily dwelling", 
+                 "419 - 1 or 2 family dwelling",
+                 "400 - Residential, other",
+                 "439 - Boarding/rooming house, residential hotels",
+                 "962 - Residential street, road or residential driveway",
+                 "899 - Residential or self-storage units",
+                 "460 - Dormitory-type residence, other",
+                 "459 - Residential board and care",
+                 "464 - Barracks, dormitory")
+
+educational <- c("210 - Schools, non-adult, other",
+                 "241 - Adult education center, college classroom",
+                 "152 - Museum",
+                 "593 - Office:  veterinary or research",
+                 "200 - Educational, other",
+                 "215 - High school/junior high school/middle school",
+                 "363 - Reformatory, juvenile detention center",
+                 "211 - Preschool",
+                 "629 - Laboratory or science lababoratory",
+                 "254 - Day care, in commercial property",
+                 "250 - Day care, other (Conversion only)",
+                 "213 - Elementary school, including kindergarten")
+
+medical <- c("331 - Hospital - medical or psychiatric",
+             "311 - 24-hour care Nursing homes, 4 or more persons",
+             "322 - Alcohol or substance abuse recovery center",
+             "300 - Health care, detention, & correction, other",
+             "342 - Doctor, dentist or oral surgeon office",
+             "321 - Mental retardation/development disability facility",
+             "340 - Clinics, doctors offices, hemodialysis cntr, other",
+             "341 - Clinic, clinic-type infirmary")
+
+other <- c("131 - Church, mosque, synagogue, temple, chapel",
+           "173 - Bus station",
+           "UUU - Undetermined",
+           "888 - Fire station",
+           "900 - Outside or special property, other",
+           "960 - Street, other",
+           "332 - Hospices",
+           "123 - Stadium, arena",
+           "141 - Athletic/health club",
+           "931 - Open land or field",
+           "170 - Passenger terminal, other",
+           "880 - Vehicle storage, other",
+           "800 - Storage, other",
+           "610 - Energy production plant, other",
+           "926 - Outbuilding, protective shelter",
+           "981 - Construction site",
+           "130 - Places of worship, funeral parlors, other",
+           "642 - Electrical distribution",
+           "150 - Public or government, other",
+           "174 - Rapid transit station",
+           "596 - Post office or mailing firms",
+           "365 - Police station",
+           "808 - Outbuilding or shed",
+           "839 - Refrigerated storage",
+           "NNN - None",
+           "124 - Playground",
+           "984 - Industrial plant yard - area",
+           "936 - Vacant lot",
+           "155 - Courthouse",
+           "807 - Outside material storage area",
+           "615 - Electric-generating plant",
+           "898 - Dock, marina, pier, wharf",
+           "952 - Railroad yard")
+
+
+
+bfc <- BuiFireH[BuiFireH$PROPERTY_USE_DESC %in% commercial, ]
+bfc$PT <- "Commercial"
+
+bfr <- BuiFireH[BuiFireH$PROPERTY_USE_DESC %in% residential, ]
+bfr$PT <- "Residential"
+
+bfe <- BuiFireH[BuiFireH$PROPERTY_USE_DESC %in% educational, ]
+bfe$PT <- "Educational"
+
+bfm <- BuiFireH[BuiFireH$PROPERTY_USE_DESC %in% medical, ]
+bfm$PT <- "Medical"
+
+bfo <- BuiFireH[BuiFireH$PROPERTY_USE_DESC %in% other, ]
+bfo$PT <- "Other"
+
+bf <- rbind(bfc, bfr, bfe, bfm, bfo)
+```
+
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+pal = colorFactor("Set1", domain = bf$PT)
+color_PT = pal(bf$PT)
+content <- paste("Start:", bf$INCIDENT_DATE_TIME, "<br/>",
+                 "End:", bf$LAST_UNIT_CLEARED_DATE_TIME, "<br/>",
+                 "Duration in Seconds:", bf$TOTAL_INCIDENT_DURATION, "<br/>",
+                 "Detector Presence:", bf$DETECTOR_PRESENCE_DESC, "<br/>",
+                 "Property Type:", bf$PT, "<br/>")
+
+map2 <- leaflet(bf) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>%
+  addTiles() %>% 
+  addCircles(lng = ~lon, lat = ~lat)%>% 
+  addCircles(color = color_PT, 
+             popup = content) %>% 
+  addLegend(pal = pal,
+            values = ~bf$PT,
+            title = "Property Types",
+            "topleft")
+
+map2
+```
+
+
+## b. Cluster
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+mcluster <- leaflet(bf) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>%
+  addTiles() %>% 
+  addCircleMarkers(color = color_PT,
+                   clusterOptions = markerClusterOptions()) %>% 
+  addLegend(pal = pal,
+            values = ~bf$PT,
+            title = "Property Types",
+            "topleft")
+
+mcluster
+```
+
+
+# 3. Fire Houses
+
+## Size of the Circle Based on Number of Units Arrived on Scene
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+pal = colorFactor("Set1", domain = bf$PT)
+color_PT = pal(bf$PT)
+incident <- paste("Start:", bf$INCIDENT_DATE_TIME, "<br/>",
+                 "End:", bf$LAST_UNIT_CLEARED_DATE_TIME, "<br/>",
+                 "Duration in Seconds:", bf$TOTAL_INCIDENT_DURATION, "<br/>",
+                 "Number of Units Arrived on Scene:", bf$UNITS_ONSCENE, "<br/>",
+                 "Property Type:", bf$PT, "<br/>")
+firehouse <- paste("Facility Address:", FDNY$FacilityAddress, "<br/>",
+                   "Borough:", FDNY$Borough, "<br/>",
+                   "Latitude:", FDNY$Latitude, "<br/>",
+                   "Longitude:", FDNY$Longitude, "<br/>")
+
+map3 <- leaflet(bf) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>%
+  addTiles(group = "OpenStreetMap") %>%
+  addProviderTiles(providers$Stamen.Toner, 
+                   group = "Toner") %>% 
+  addProviderTiles(providers$Stamen.TonerLite, 
+                   group = "Tone Liter") %>%
+  addCircles(group = "Property Types",
+             lng = ~lon, 
+             lat = ~lat,
+             color = color_PT,
+             popup = incident,
+             radius = ~UNITS_ONSCENE * 10) %>% 
+  addLegend(pal = pal,
+            values = ~bf$PT,
+            title = "Property Types",
+            "topleft") %>%
+  addCircles(group = "Firehouses",
+             lng = FDNY$Longitude,
+             lat = FDNY$Latitude,
+             color = "black",
+             popup = firehouse) %>% 
+  addLayersControl(baseGroups = c("OpenStreetMap", "Toner", "Toner Lite"),
+                   overlayGroups = c("Property Types", "Firehouses"),
+                   options = layersControlOptions(collapsed = TRUE))
+
+map3
+```
+
+
+# 4. Distance from Firehouse and Response Time
+
+## a. Calculate Distance
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+library(rgeos)
+library(geosphere)
+
+# create spatial points for incidents & firehouses
+dfinc <- BuiFire %>% select(lon, lat) %>%
+  filter(!is.na(lon), !is.na(lat))
+inc_cor <- SpatialPoints(dfinc)
+
+dffh <- FDNY %>% select(Longitude, Latitude) %>%
+  filter(!is.na(Longitude), !is.na(Latitude))
+fh_cor <- SpatialPoints(dffh)
+
+# write a function to find the nearest firehouse for each incident
+nearestFH <- function(i) {
+  Dis <- gDistance(i, fh_cor)
+  return(Dis)
+}
+
+# find the distance between each incident and the nearest firehouse
+for (p in 1:14200){
+  BuiFire$Dist_NFH[p] <- nearestFH(inc_cor[p])
+}
+
+# calculate response time
+BuiFire$ARRIVAL_DATE_TIME <- as.POSIXct(BuiFire$ARRIVAL_DATE_TIME,
+                                    format = '%m/%d/%Y %I:%M:%S %p')
+
+BuiFire$INCIDENT_DATE_TIME <- as.POSIXct(BuiFire$INCIDENT_DATE_TIME,
+                                    format = '%m/%d/%Y %I:%M:%S %p')
+
+BuiFire$res_time <- difftime(BuiFire$ARRIVAL_DATE_TIME, 
+                             BuiFire$INCIDENT_DATE_TIME,
+                             units = 'secs')
+
+# plot nearest firehouse distance and response time, removing some outliers to make the plot more readable
+library(ggplot2)
+plot4a <- ggplot(BuiFire, aes(x = Dist_NFH, y = as.numeric(res_time))) +
+  geom_point() +
+  xlim(0, 0.035) +
+  ylim(0, 1000) +
+  geom_smooth() +
+  xlab("Distance to Nearest Firehouse") +
+  ylab("Response Time in Seconds")
+
+plot4a
+```
+
+
+## Visualize Patterns for Severity
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+bfsev <- BuiFire %>%
+  filter(!is.na(HIGHEST_LEVEL_DESC)) %>% 
+  mutate(
+    Severity = case_when(
+      HIGHEST_LEVEL_DESC %in% c("0 - Initial alarm",
+                                "1 - More than initial alarm, less than Signal 7-5") ~ "Low",
+      HIGHEST_LEVEL_DESC %in% c("7 - Signal 7-5",
+                                "75 - All Hands Working") ~ "High",
+      TRUE ~ "Medium"))
+
+bfsev$Severity <- factor(bfsev$Severity,
+                         levels = c("Low", "Medium", "High"))
+
+plot_sev <- ggplot(bfsev, aes(x = Dist_NFH, y = as.numeric(res_time), 
+                              fill = Severity, color = Severity)) +
+  geom_point() +
+  xlim(0, 0.035) +
+  ylim(0, 800) +
+  geom_smooth(size = 0.7, 
+              color = "black", se = TRUE) +
+  xlab("Distance to Nearest Firehouse") +
+  ylab("Response Time in Seconds") +
+  facet_grid(Severity ~ .) +
+  theme(legend.position = "none")
+
+plot_sev
+```
+
+I re-categorized the severity levels into three categories: Low, Medium, and High. I also removed some very extreme cases so that the plot is more readable. In general, for all three categories, the response time is all relatively short and the longer distance from the nearest firehouse corresponses to the longer response time, according to the geom_smooth line. There is a very small difference among the severity: the line for the "High" category is flatter than the other two, which means if the incident is very severe, the response time is slightly shorter. In conclusion, there is a relationship, though a very subtle one, between severity and response time for fire incidents in NYC.
+
+
+## b.Map of Response Times & Property Types
+
+### Adding New Types to Categories
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+Commercial <- append(commercial, 
+                     c("112 - Billiard center, pool hall",
+                       "120 - Variable-use amusement, recreation places, other",
+                       "122 - Convention center, exhibition hall",
+                       "129 - Amusement center: indoor/outdoor"))
+
+Educational <- append(educational, 
+                      "255 - Day care, in residence, licensed")
+
+Other <- append(other,
+                c("151 - Library",
+                  "171 - Airport passenger terminal",
+                  "323 - Asylum, mental institution",
+                  "361 - Jail, prison (not juvenile)",
+                  "647 - Water utility",
+                  "961 - Highway or divided highway"))
+
+BFC <- bfsev[bfsev$PROPERTY_USE_DESC %in% Commercial, ]
+BFC$PT <- "Commercial"
+
+BFR <- bfsev[bfsev$PROPERTY_USE_DESC %in% residential, ]
+BFR$PT <- "Residential"
+
+BFE <- bfsev[bfsev$PROPERTY_USE_DESC %in% Educational, ]
+BFE$PT <- "Educational"
+
+BFM <- bfsev[bfsev$PROPERTY_USE_DESC %in% medical, ]
+BFM$PT <- "Medical"
+
+BFO <- bfsev[bfsev$PROPERTY_USE_DESC %in% Other, ]
+BFO$PT <- "Other"
+
+bfsevPT <- rbind(BFC, BFR, BFE, BFM, BFO)
+
+bfsevPT$res_time <- as.numeric(bfsevPT$res_time)
+bfsevPT <- bfsevPT %>% 
+  filter(res_time > 0 & res_time < 800) %>% 
+  mutate(
+    Sev_Num = case_when(
+      Severity == "Low"~ 3,
+      Severity == "Medium" ~ 6,
+      Severity == "High" ~ 9))
+```
+
+
+## Property Types
+### Commercial Response Time
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+color_PT <- colorNumeric("YlOrRd", bfsevPT$res_time)
+
+content <- paste("Duration in Seconds:", bfsevPT$TOTAL_INCIDENT_DURATION, "<br/>",
+                 "Response Time in Seconds:", bfsevPT$res_time, "<br/>",
+                 "Severity:", bfsevPT$Severity, "<br/>")
+
+m1 <- leaflet(bfsevPT[bfsevPT$PT == "Commercial", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Commercial",
+            "topleft")
+
+m1
+```
+
+
+### Residential Response Time
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+m2 <- leaflet(bfsevPT[bfsevPT$PT == "Residential", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Residential",
+            "topleft")
+
+m2
+```
+
+
+### Educational Response Time
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+m3 <- leaflet(bfsevPT[bfsevPT$PT == "Educational", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Educational",
+            "topleft")
+
+m3
+```
+
+
+### Medical Response Time
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+m4 <- leaflet(bfsevPT[bfsevPT$PT == "Medical", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Medical",
+            "topleft")
+
+m4
+```
+
+
+### Other Response Time
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+m5 <- leaflet(bfsevPT[bfsevPT$PT == "Other", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Other",
+            "topleft")
+
+m5
+```
+
+
+### Facets - mapview
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+library(mapview)
+sync(m1, m2, m3, m4, m5)
+```
+
+
+
+
+
+There is no very significant relationship between property types and response time except that the response time for commercial buildings are slightly shorter than residential buildings and medical buildings have longer response time. However, these plots suffer from overplotting due to the large number of points.
+
+
+
+
+## Incident Severity
+### Severity: Low
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+ma <- leaflet(bfsevPT[bfsevPT$Severity == "Low", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Low",
+            "topleft")
+
+ma
+```
+
+
+### Severity: Medium
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+mb <- leaflet(bfsevPT[bfsevPT$Severity == "Medium", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "Medium",
+            "topleft")
+
+mb
+```
+
+
+### Severity: High
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+mc <- leaflet(bfsevPT[bfsevPT$Severity == "High", ]) %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addCircleMarkers(color = ~color_PT(res_time),
+                   weight = 0,
+                   fillOpacity = 0.7,
+                   popup = content) %>% 
+  addLegend(values = bfsevPT$res_time,
+            pal = color_PT,
+            title = "High",
+            "topleft")
+
+mc
+```
+
+
+### Facets - mapview
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+sync(ma, mb, mc)
+```
+
+
+
+
+
+The pattern between incident severity and response time is not very distinguised as well. The response time in general are short while the response time it is slightly shorter for high severity incidents.
+
+
+
+
+## Year
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+bfsevPT$Year <- substring(bfsevPT$INCIDENT_DATE_TIME, 1, 4)
+yearly <- bfsevPT %>% 
+  group_by(Year, BOROUGH_DESC) %>% 
+  summarise(ave = mean(res_time))
+
+yearly$boro_name <- substring(yearly$BOROUGH_DESC, 5)
+
+library(rgdal)
+brgh <- readOGR("borough_boundaries.geojson", verbose = FALSE)
+
+jt <- left_join(yearly, brgh@data, "boro_name")
+```
+
+### 2013
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+palyr <- colorNumeric("YlOrRd", domain = jt$ave, c(180, 250))
+
+jt13 <- left_join(brgh@data, yearly[yearly$Year == "2013", ], "boro_name")
+
+m13 <- leaflet() %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addPolygons(data = brgh,
+              fillColor = ~palyr(jt13$ave),
+              fillOpacity = 1) %>% 
+  addLegend(pal = palyr,
+            values = jt$ave,
+            title = "2013",
+            "topleft")
+
+m13
+```
+
+### 2014
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+jt14 <- left_join(brgh@data, yearly[yearly$Year == "2014", ], "boro_name")
+
+m14 <- leaflet() %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addPolygons(data = brgh,
+              fillColor = ~palyr(jt14$ave),
+              fillOpacity = 1) %>% 
+  addLegend(pal = palyr,
+            values = jt$ave,
+            title = "2014",
+            "topleft")
+
+m14
+```
+
+### 2015
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+jt15 <- left_join(brgh@data, yearly[yearly$Year == "2015", ], "boro_name")
+
+m15 <- leaflet() %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addPolygons(data = brgh,
+              fillColor = ~palyr(jt15$ave),
+              fillOpacity = 1) %>% 
+  addLegend(pal = palyr,
+            values = jt$ave,
+            title = "2015",
+            "topleft")
+
+m15
+```
+
+### 2016
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+jt16 <- left_join(brgh@data, yearly[yearly$Year == "2016", ], "boro_name")
+
+m16 <- leaflet() %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addPolygons(data = brgh,
+              fillColor = ~palyr(jt16$ave),
+              fillOpacity = 1) %>% 
+  addLegend(pal = palyr,
+            values = jt$ave,
+            title = "2016",
+            "topleft")
+
+m16
+```
+
+### 2017
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+jt17 <- left_join(brgh@data, yearly[yearly$Year == "2017", ], "boro_name")
+
+m17 <- leaflet() %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addPolygons(data = brgh,
+              fillColor = ~palyr(jt17$ave),
+              fillOpacity = 1) %>% 
+  addLegend(pal = palyr,
+            values = jt$ave,
+            title = "2017",
+            "topleft")
+
+m17
+```
+
+### 2018
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+jt18 <- left_join(brgh@data, yearly[yearly$Year == "2018", ], "boro_name")
+
+m18 <- leaflet() %>% 
+  setView(lng = -73.954998, lat = 40.688038, zoom = 10) %>% 
+  addTiles() %>% 
+  addPolygons(data = brgh,
+              fillColor = ~palyr(jt18$ave),
+              fillOpacity = 1) %>% 
+  addLegend(pal = palyr,
+            values = jt$ave,
+            title = "2018",
+            "topleft")
+
+m18
+```
+
+
+### Facets - mapview
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+sync(m13, m14, m15, m16, m17, m18)
+```
+
+Overall, there is very little differences across the period from 2013 to 2017 but the response times have an increasing trend in all boroughs except Staten Island that shows more fluctuation. In general, Brooklyn has the lowest average response time among other boroughs. But in 2018, the response times increased in all five boroughs.
