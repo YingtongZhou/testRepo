@@ -1,4 +1,11 @@
 # Example Projects
+
+0. Internship Project (NYC Map)
+
+https://yingtongzhou.github.io/TestMap.github.io/
+
+
+
 1. Group Project (Rental Genius|Manhattan, NY) of Data Visualization Class (R Shiny)
 
 https://c-z2581.shinyapps.io/nycrental-app/
