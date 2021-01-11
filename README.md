@@ -2,7 +2,7 @@
 
 0. Internship Project (NYC Map)
 
-https://yingtongzhou.github.io/Map.github.io/ & https://yingtongzhou.github.io/TestMap.github.io/ (It may take 10-20 seconds to load)
+https://yingtongzhou.github.io/Map.github.io/ (It may take 10-20 seconds to load)
 
 
 
