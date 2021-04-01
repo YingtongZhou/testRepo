@@ -1,5 +1,8 @@
 # Example Projects
 
+My LinkedIn Page: 
+https://www.linkedin.com/in/yingtong-zhou/
+
 0. Internship Project (NYC Map)
 
 https://yingtongzhou.github.io/Map.github.io/ (It may take 10-20 seconds to load)
